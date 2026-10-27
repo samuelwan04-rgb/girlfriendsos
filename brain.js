@@ -1,0 +1,114 @@
+/* GIRLFRIENDSOS scoring. Pure functions, no page code, so the simulator runs the exact same logic.
+   q   = her answers: {loc, side, cu, hunger, budget, mood:{dishId:'love'|'nope'}, nah:Set}
+   ctx = {hour, now, history:[{id,t}]} */
+(function(root){
+const DATA = typeof module!=='undefined' ? require('./data.js') : root.GFDATA;
+const {DISHES,SPOTS,CUISINES} = DATA;
+
+// Tunable knobs (tuned with sim.js)
+const P = {
+  love:8,            // she tapped it in the vibe check
+  spotHere:2.2,      // one of her spots in this area sells it
+  spotElsewhere:.35, // area has spots, but none sell this
+  spotAnywhere:1.5,  // before she says where she is: one of her spots anywhere sells it
+  overTol:1.03,      // allow up to 3% over budget ($7.10 dumplings on a $7 budget)
+  overPenalty:.95,
+  nearFloor:.65,     // how much a dish far from her usual spend at that budget still counts
+  vibeList:10, vibeListBroad:12, // dishes shown in the vibe check
+  sharpen:1.5,       // percentages = score^sharpen, normalised
+  thirdCut:.3,       // show a 3rd pick only if it scores at least 30% of the top
+  learnRate:.15, learnCap:1.6, learnDays:21
+};
+
+// What she probably expects to spend at each budget answer, scaled by how hungry she is
+const SPEND = {7:{t:5.5,s:3}, 10:{t:8,s:4}, 15:{t:12,s:6}, 20:{t:25,s:15}};
+const HSCALE = {meal:1, between:.85, snack:.45, dunno:.8};
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const spotsFor=(id,area)=>SPOTS.filter(o=>o.dish===id&&o.area===area);
+const areaHasSpots=area=>SPOTS.some(o=>o.area===area);
+
+function priceAt(d,area){
+  const sp=spotsFor(d.id,area);
+  if(!sp.length) return {lo:d.lo,hi:d.hi,sp};
+  return {lo:Math.min(...sp.map(o=>o.lo)),hi:Math.max(...sp.map(o=>o.hi)),sp};
+}
+function inPool(d,q){
+  if(q.side==='any') return true;
+  if(q.side==='snack') return d.cu.includes('sw');
+  const ids=q.cu==='any'||!q.cu?CUISINES[q.side].map(c=>c.id):[q.cu];
+  return d.cu.some(c=>ids.includes(c));
+}
+function hungerFit(d,h){
+  const v=h==='dunno'?(.35*d.fit.meal+.4*d.fit.between+.25*d.fit.snack):d.fit[h];
+  return Math.pow(.08+.92*v,1.3);
+}
+function budgetFit(lo,hi,cap,hunger,treat){
+  let over=1;
+  if(cap<20&&lo>cap){ if(lo>cap*P.overTol) return .04; over=P.overPenalty; }
+  const afford=cap>=20||lo>cap?1:.6+.4*clamp((cap-lo)/Math.max(1,hi-lo),0,1);
+  const k=HSCALE[hunger]??.8, t=SPEND[cap].t*k, s=SPEND[cap].s*Math.max(.6,k);
+  const pay=clamp(t,lo,hi);
+  const near=P.nearFloor+(1-P.nearFloor)*Math.exp(-Math.pow((pay-t)/s,2));
+  return afford*near*over*(cap>=20&&treat?1.1:1);
+}
+function timeFit(d,hour){
+  const late=hour>=22||hour<4, morning=hour>=5&&hour<11;
+  let m=1;
+  if(late){ if(d.f.includes('late')) m*=1.3; if(d.f.includes('treat')) m*=.7; if(d.f.includes('morning')&&!d.f.includes('late')) m*=.5; }
+  if(morning&&d.f.includes('morning')) m*=1.4;
+  return m;
+}
+function placeFit(d,area,sp){
+  if(!area) return SPOTS.some(o=>o.dish===d.id)?P.spotAnywhere:1;
+  if(sp.length) return P.spotHere*Math.max(...sp.map(o=>o.w));
+  if(!areaHasSpots(area)) return 1;
+  return P.spotElsewhere*(area==='home'?.6+.6*d.tr:1);   // at home she could still order delivery
+}
+function learnedBoost(id,ctx){
+  let s=0;
+  for(const e of ctx.history||[]) if(e.id===id) s+=Math.exp(-(ctx.now-e.t)/(P.learnDays*864e5));
+  return Math.min(P.learnCap,1+P.learnRate*s);
+}
+function baseScore(d,q,ctx){
+  const {lo,hi,sp}=priceAt(d,q.loc);
+  return d.p*learnedBoost(d.id,ctx)*hungerFit(d,q.hunger)*budgetFit(lo,hi,q.budget,q.hunger,d.f.includes('treat'))*timeFit(d,ctx.hour)*placeFit(d,q.loc,sp);
+}
+function score(d,q,ctx){
+  const mood=q.mood&&q.mood[d.id];
+  if(mood==='nope'||(q.nah&&q.nah.has(d.id))) return 0;
+  return baseScore(d,q,ctx)*(mood==='love'?P.love:1);
+}
+function rank(q,ctx,withMood=true){
+  return DISHES.filter(d=>inPool(d,q)).map(d=>({d,s:withMood?score(d,q,ctx):baseScore(d,q,ctx)})).filter(r=>r.s>0).sort((a,b)=>b.s-a.s);
+}
+function verdict(q,ctx){
+  const ranked=rank(q,ctx);
+  if(!ranked.length) return [];
+  const n=ranked.length>2&&ranked[2].s/ranked[0].s>=P.thirdCut?3:Math.min(2,ranked.length);
+  const top=ranked.slice(0,n);
+  const w=top.map(r=>Math.pow(r.s,P.sharpen)),tot=w.reduce((a,b)=>a+b,0);
+  const pct=w.map(x=>Math.max(10,Math.round(x/tot*20)*5));
+  pct[0]+=100-pct.reduce((a,b)=>a+b,0);
+  pct.sort((a,b)=>b-a);                // rounding can flip near-ties; keep the top pick on top
+  return top.map((r,i)=>({...r,pct:pct[i]}));
+}
+function reasons(d,q,ctx){
+  const out=[], h=ctx.hour, {lo,hi,sp}=priceAt(d,q.loc);
+  if(q.mood&&q.mood[d.id]==='love') out.push('you said yes to this');
+  if(sp.length) out.push(sp.length>1?`${sp.length} of your spots have it`:'one of your spots');
+  if(learnedBoost(d.id,ctx)>1.05) out.push("you've been into this lately");
+  const hv=q.hunger==='dunno'?null:d.fit[q.hunger];
+  if(hv>=.8) out.push({meal:'proper full-meal portion',between:'just-right portion',snack:'snacky size'}[q.hunger]);
+  if(q.budget>=20&&d.f.includes('treat')) out.push('treat-yourself energy');
+  else if(q.budget<20&&hi<=q.budget) out.push(`easily under $${q.budget}`);
+  else if(q.budget<20&&lo<=q.budget) out.push(`doable under $${q.budget}`);
+  else if(q.budget<20&&lo<=q.budget*P.overTol) out.push(`a few cents over $${q.budget}`);
+  if((h>=22||h<4)&&d.f.includes('late')) out.push('supper classic');
+  if(h>=5&&h<11&&d.f.includes('morning')) out.push('good morning food');
+  return out.slice(0,3);
+}
+
+const BRAIN={P,SPEND,priceAt,spotsFor,areaHasSpots,inPool,baseScore,score,rank,verdict,reasons};
+if(typeof module!=='undefined') module.exports=BRAIN; else root.GFBRAIN=BRAIN;
+})(this);
