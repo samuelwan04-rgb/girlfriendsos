@@ -11,23 +11,32 @@ const pick=(items,w)=>{const tot=w.reduce((a,b)=>a+b,0);let r=rnd()*tot;for(let 
 const gauss=()=>Math.sqrt(-2*Math.log(rnd()+1e-12))*Math.cos(2*Math.PI*rnd());
 
 const ASIAN=CUISINES.asian.map(c=>c.id), ANGMOH=CUISINES.angmoh.map(c=>c.id);
-const AREA_W={school:.35,west:.25,home:.25,east:.1,central:.05};
-const BUDGET_W={school:[.5,.35,.1,.05],west:[.55,.3,.1,.05],home:[.4,.4,.15,.05],east:[.1,.2,.3,.4],central:[.2,.3,.3,.2]};
+const AREA_W={school:.32,west:.21,home:.21,sengkang:.11,east:.07,central:.05,north:.03};
+const BUDGET_W={sengkang:[.35,.35,.2,.1],school:[.5,.35,.1,.05],west:[.55,.3,.1,.05],home:[.4,.4,.15,.05],east:[.1,.2,.3,.4],central:[.2,.3,.3,.2],north:[.3,.35,.25,.1]};
 const TIERS=[7,10,15,20];
 
 function persona(){const t={};for(const d of DISHES)t[d.id]=Math.exp(.5*gauss());return t}
+// What Sam said about her, as the pretend-Rinis' real behaviour: heavy food is a turn-off,
+// spicy is a mood she's in on ~30% of days, and junk loses its appeal for a few days after she's had some
+const has=(d,f)=>d.f.split(' ').includes(f);
+const BYID=Object.fromEntries(DISHES.map(d=>[d.id,d]));
+function dayMood(history,now){
+  const spicy=rnd()<.3;
+  const junkLately=history.some(e=>has(BYID[e.id],'junk')&&now-e.t<=3*864e5);
+  return d=>(has(d,'heavy')?.55:1)*(has(d,'spicy')?(spicy?2.5:.6):1)*(has(d,'junk')&&junkLately?.4:1);
+}
 function hourOfDay(){return pick([[12,13,14],[18,19,20],[15,16,17],[22,23,0],[8,9,10]],[.35,.33,.14,.1,.08])[Math.floor(rnd()*3)]}
 
 // What she secretly wants today
-function trueDish(taste,loc,H,cap,hour){return pick(DISHES,trueWeights(taste,loc,H,cap,hour))}
-function trueWeights(taste,loc,H,cap,hour){
+function trueDish(taste,loc,H,cap,hour,mood){return pick(DISHES,trueWeights(taste,loc,H,cap,hour,mood))}
+function trueWeights(taste,loc,H,cap,hour,mood=()=>1){
   const ctx={hour,now:0,history:[]};
   return DISHES.map(d=>{
     const {lo,sp}=B.priceAt(d,loc);
     const avail=sp.length?Math.max(...sp.map(o=>o.w)):B.areaHasSpots(loc)?.12:1;
     const afford=lo<=cap*1.03||cap>=20?1:.03;
     const time=B.baseScore(d,{loc:null,hunger:H,budget:20},ctx)/B.baseScore(d,{loc:null,hunger:H,budget:20},{...ctx,hour:13}); // time-of-day part only
-    return d.p*taste[d.id]*Math.pow(d.fit[H],2)*avail*afford*time;
+    return d.p*taste[d.id]*mood(d)*Math.pow(d.fit[H],2)*avail*afford*time;
   });
 }
 // Ceilings: a mind-reader who knows her tastes and true hunger/budget, and one who knows everything but her tastes
@@ -37,11 +46,11 @@ function ceilings(n){
   for(let i=0;i<n;i++){
     const taste=persona(), loc=pick(Object.keys(AREA_W),Object.values(AREA_W));
     const H=pick(['meal','between','snack'],[.45,.3,.25]), cap=pick(TIERS,BUDGET_W[loc]), hour=hourOfDay();
-    const w=trueWeights(taste,loc,H,cap,hour), d=pick(DISHES,w);
+    const mood=dayMood([],0), w=trueWeights(taste,loc,H,cap,hour,mood), d=pick(DISHES,w);
     const q=answer(d,H,cap,loc), ok=DISHES.map(x=>B.inPool(x,q)?1:0);   // only what fits her cuisine answer
     const order=w.map((x,i)=>[x*ok[i],i]).sort((a,b)=>b[0]-a[0]).map(x=>DISHES[x[1]].id);
     if(order[0]===d.id)mind1++; if(order.slice(0,3).includes(d.id))mind3++;
-    const wb=trueWeights(flat,loc,H,cap,hour).map((x,i)=>x*ok[i]); if(DISHES[wb.indexOf(Math.max(...wb))].id===d.id)blind1++;
+    const wb=trueWeights(flat,loc,H,cap,hour,mood).map((x,i)=>x*ok[i]); if(DISHES[wb.indexOf(Math.max(...wb))].id===d.id)blind1++;
   }
   console.log(`Mind-reader (knows her tastes)     hit@1 ${(100*mind1/n).toFixed(0)}%   top-3 ${(100*mind3/n).toFixed(0)}%`);
   console.log(`Knows hunger+budget, not tastes    hit@1 ${(100*blind1/n).toFixed(0)}%   (no vibe check)`);
@@ -60,15 +69,15 @@ function answer(d,H,cap,loc){
   return q;
 }
 const DIAG={shown:0,loved:0,n:0};
-function vibe(q,d,taste,ctx,locKnown){
+function vibe(q,d,taste,ctx,locKnown,mood){
   const listQ=locKnown?q:{...q,loc:null};
   const k=q.side==='any'||q.cu==='any'||q.side==='snack'?B.P.vibeListBroad:B.P.vibeList;
-  const shown=B.rank(listQ,ctx,false).slice(0,k).map(r=>r.d);
+  const shown=B.vibeList(listQ,ctx,k).map(r=>r.d);
   DIAG.n++; if(shown.some(s=>s.id===d.id)) DIAG.shown++;
   if(rnd()<.3) return; // skipped the vibe check
   for(const s of shown){
     if(s.id===d.id){ if(rnd()<.75) q.mood[s.id]='love'; continue; }
-    const t=taste[s.id];
+    const t=taste[s.id]*mood(s);
     if(rnd()<clamp(.05+.2*(t-1),0,.35)) q.mood[s.id]='love';
     else if(t<.8&&rnd()<.15) q.mood[s.id]='nope';
   }
@@ -86,10 +95,11 @@ function run(label,{vibeOn=true,locKnown=false,days=1,personas=N,setup}={}){
       const H=pick(['meal','between','snack'],[.45,.3,.25]);
       const cap=pick(TIERS,BUDGET_W[loc]);
       const hour=hourOfDay();
-      const d=trueDish(taste,loc,H,cap,hour);
       const ctx={hour,now:day*864e5,history};
+      const mood=dayMood(history,ctx.now);
+      const d=trueDish(taste,loc,H,cap,hour,mood);
       const q=answer(d,H,cap,loc);
-      if(vibeOn) vibe(q,d,taste,ctx,locKnown);
+      if(vibeOn) vibe(q,d,taste,ctx,locKnown,mood);
       const v=B.verdict(q,ctx);
       const hit1=v[0]&&v[0].d.id===d.id, hit3=v.some(r=>r.d.id===d.id);
       // calibration among days where the right dish made the shortlist (the percentages only split the shortlist)
@@ -122,6 +132,7 @@ if(require.main===module){
   run('  without vibe check',{vibeOn:false});
   run('  if location were asked first',{locKnown:true});
   run('  ignoring her spots',{setup:P=>{P.spotHere=1;P.spotElsewhere=1}});
+  run('  ignoring what Sam said about her',{setup:P=>Object.assign(P,{heavy:1,heavyStarving:1,junkRecent:0,spicyMood:1,spicyOff:1,spicyRecent:1})});
   run('Same Rinis, days 1-10',{days:10,personas:N/10});
   run('Same Rinis, days 51-60 (learning)',{days:60,personas:N/20});
   console.log('\nBy location (full):');

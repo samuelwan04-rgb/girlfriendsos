@@ -131,6 +131,9 @@ details code{font-size:12.5px;background:var(--blush);padding:1px 5px;border-rad
       <li><code>budget fit</code>: out if even the cheapest version is over (3% grace, for $7.10 dumplings), and a mild preference for what people usually spend at that budget</li>
       <li><code>time of day</code>: supper food after 10pm, breakfast food before 11am</li>
       <li><code>learning</code>: up to ×1.6 for dishes she's tapped "I'm eating this" on in the last few weeks</li>
+      <li><code>not too heavy</code>: heavy dishes (mala, butter chicken, burgers, carbonara…) ×0.65, or ×0.8 when she's starving</li>
+      <li><code>junk sometimes</code>: fried and unhealthy dishes drop (down to ×0.4) if she's had one in the last few days, then recover</li>
+      <li><code>spicy mood</code>: the vibe check always shows at least one spicy dish. Tap one and the other spicy dishes get ×1.5; nah them and they get ×0.75. Had spicy in the last day or two: ×0.8</li>
     </ul>
     <p>The top 2–3 scores are raised to the power 1.5 and split into percentages. That value was tuned in simulation so "60%" means about a 60% chance among the picks shown.</p>
   </details>
@@ -213,7 +216,7 @@ function render(){
     // Location isn't known yet, so this list uses general prices and favours dishes from any of her spots
     S.loc=null;
     const broad=S.side==='any'||S.cu==='any'||S.side==='snack';
-    const list=B.rank(q(),ctx(),false).slice(0,broad?B.P.vibeListBroad:B.P.vibeList);
+    const list=B.vibeList(q(),ctx(),broad?B.P.vibeListBroad:B.P.vibeList);
     card.innerHTML=backBtn()+momo('think','any of these sound good?',"Tap the ones you could eat. Hit nah on anything you don't want. Or just skip.")+
       `<div class="dishes">`+list.map(({d})=>{
         const m=S.mood[d.id]||'';
@@ -254,7 +257,7 @@ function emailFor(v){
     const at=sp.length?sp.map(o=>`${o.place} (${o.lo===o.hi?money(o.lo):money(o.lo)+'–'+money(o.hi)}${o.note?', '+o.note:''})`).join('; '):r.d.w;
     return `${i+1}. ${r.d.name}: ${r.pct}%\n   ${at}`;
   }).join('\n');
-  const search=[...new Set(v.map(r=>{const sp=B.spotsFor(r.d.id,S.loc).find(o=>!GENERIC_PLACE.test(o.place));return sp?`${sp.place} ${r.d.name.split(' / ')[0].toLowerCase()}`:r.d.name.split(' / ')[0].toLowerCase()}))];
+  const search=[...new Set(v.map(r=>{const sp=B.spotsFor(r.d.id,S.loc).find(o=>!GENERIC_PLACE.test(o.place));return sp?`${sp.place.replace(' @ ',' ')} ${r.d.name.split(' / ')[0].toLowerCase()}`:r.d.name.split(' / ')[0].toLowerCase()}))];
   const body=`Momo's verdict for Rinis · ${when}
 Where: ${area} · Hungry: ${hunger} · Budget: ${budget}
 ${S.eating?`She picked: ${S.eating}\n`:''}

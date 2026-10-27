@@ -3,7 +3,9 @@
    ctx = {hour, now, history:[{id,t}]} */
 (function(root){
 const DATA = typeof module!=='undefined' ? require('./data.js') : root.GFDATA;
-const {DISHES,SPOTS,CUISINES} = DATA;
+const {DISHES,SPOTS,CUISINES,AREAS} = DATA;
+const BYID=Object.fromEntries(DISHES.map(d=>[d.id,d]));
+const has=(d,flag)=>d.f.split(' ').includes(flag);
 
 // Tunable knobs (tuned with sim.js)
 const P = {
@@ -17,7 +19,16 @@ const P = {
   vibeList:10, vibeListBroad:12, // dishes shown in the vibe check
   sharpen:1.5,       // percentages = score^sharpen, normalised
   thirdCut:.3,       // show a 3rd pick only if it scores at least 30% of the top
-  learnRate:.15, learnCap:1.6, learnDays:21
+  learnRate:.15, learnCap:1.6, learnDays:21,
+  spotLoose:.7,      // big areas (central, north): the mall Momo knows is only one of many places she could be
+  // What Sam told Momo about Rinis
+  heavy:.65,         // she doesn't like meals that are too heavy
+  heavyStarving:.8,  // ...a bit less of a problem when she's starving
+  junkRecent:.45,    // unhealthy is fine, just not too often: each recent junk meal knocks it down
+  junkDays:2.5, junkFloor:.4,
+  spicyMood:1.5,     // spicy is an occasional mood: tapping a spicy dish lifts the other spicy ones
+  spicyOff:.75,      // and saying nah to spicy (without tapping any) pushes them down
+  spicyRecent:.8     // had something spicy in the last day or two: less likely again
 };
 
 // What she probably expects to spend at each budget answer, scaled by how hungry she is
@@ -63,6 +74,7 @@ function placeFit(d,area,sp){
   if(!area) return SPOTS.some(o=>o.dish===d.id)?P.spotAnywhere:1;
   if(sp.length) return P.spotHere*Math.max(...sp.map(o=>o.w));
   if(!areaHasSpots(area)) return 1;
+  if(AREAS.find(a=>a.id===area)?.loose) return P.spotLoose;
   return P.spotElsewhere*(area==='home'?.6+.6*d.tr:1);   // at home she could still order delivery
 }
 function learnedBoost(id,ctx){
@@ -70,17 +82,51 @@ function learnedBoost(id,ctx){
   for(const e of ctx.history||[]) if(e.id===id) s+=Math.exp(-(ctx.now-e.t)/(P.learnDays*864e5));
   return Math.min(P.learnCap,1+P.learnRate*s);
 }
-function baseScore(d,q,ctx){
-  const {lo,hi,sp}=priceAt(d,q.loc);
-  return d.p*learnedBoost(d.id,ctx)*hungerFit(d,q.hunger)*budgetFit(lo,hi,q.budget,q.hunger,d.f.includes('treat'))*timeFit(d,ctx.hour)*placeFit(d,q.loc,sp);
+// How recently she ate something with this flag (sum of decaying hits from her "I'm eating" history)
+function recent(flag,ctx,days){
+  let s=0;
+  for(const e of ctx.history||[]){const d=BYID[e.id]; if(d&&has(d,flag)) s+=Math.exp(-(ctx.now-e.t)/(days*864e5))}
+  return s;
 }
+// Spicy mood from the vibe check: +1 tapped a spicy dish, -1 only said nah to spicy ones, 0 no signal
+function spiceMood(mood){
+  let love=false,nope=false;
+  for(const [id,m] of Object.entries(mood||{})){const d=BYID[id]; if(!d||!has(d,'spicy')) continue; if(m==='love') love=true; if(m==='nope') nope=true}
+  return love?1:nope?-1:0;
+}
+// What Sam told Momo about her: not too heavy, junk sometimes
+function prefFit(d,q,ctx){
+  let m=1;
+  if(has(d,'heavy')) m*=q.hunger==='meal'?P.heavyStarving:P.heavy;
+  if(has(d,'junk')) m*=Math.max(P.junkFloor,1-P.junkRecent*recent('junk',ctx,P.junkDays));
+  return m;
+}
+// ...and spicy when she's in the mood (mood = her vibe-check taps, or {} before she's answered)
+function spiceFit(d,mood,ctx){
+  if(!has(d,'spicy')) return 1;
+  const sm=spiceMood(mood);
+  if(sm>0) return P.spicyMood;
+  if(sm<0) return P.spicyOff;
+  return recent('spicy',ctx,1.5)>.3?P.spicyRecent:1;
+}
+function core(d,q,ctx,mood){
+  const {lo,hi,sp}=priceAt(d,q.loc);
+  return d.p*learnedBoost(d.id,ctx)*hungerFit(d,q.hunger)*budgetFit(lo,hi,q.budget,q.hunger,d.f.includes('treat'))*timeFit(d,ctx.hour)*placeFit(d,q.loc,sp)*prefFit(d,q,ctx)*spiceFit(d,mood,ctx);
+}
+const baseScore=(d,q,ctx)=>core(d,q,ctx,{});
 function score(d,q,ctx){
   const mood=q.mood&&q.mood[d.id];
   if(mood==='nope'||(q.nah&&q.nah.has(d.id))) return 0;
-  return baseScore(d,q,ctx)*(mood==='love'?P.love:1);
+  return core(d,q,ctx,q.mood||{})*(mood==='love'?P.love:1);
 }
 function rank(q,ctx,withMood=true){
   return DISHES.filter(d=>inPool(d,q)).map(d=>({d,s:withMood?score(d,q,ctx):baseScore(d,q,ctx)})).filter(r=>r.s>0).sort((a,b)=>b.s-a.s);
+}
+// The vibe-check list: top dishes, plus at least one spicy one so she can say if she's in the mood
+function vibeList(q,ctx,k){
+  const all=rank(q,ctx,false), list=all.slice(0,k);
+  if(!list.some(r=>has(r.d,'spicy'))){const sp=all.find(r=>has(r.d,'spicy')); if(sp&&list.length) list[list.length-1]=sp}
+  return list;
 }
 function verdict(q,ctx){
   const ranked=rank(q,ctx);
@@ -98,6 +144,8 @@ function reasons(d,q,ctx){
   if(q.mood&&q.mood[d.id]==='love') out.push('you said yes to this');
   if(sp.length) out.push(sp.length>1?`${sp.length} of your spots have it`:'one of your spots');
   if(learnedBoost(d.id,ctx)>1.05) out.push("you've been into this lately");
+  if(has(d,'spicy')&&spiceMood(q.mood)>0) out.push('spicy, since you\'re in the mood');
+  if(!has(d,'heavy')&&q.hunger!=='snack'&&d.fit.meal>=.8) out.push('filling but not too heavy');
   const hv=q.hunger==='dunno'?null:d.fit[q.hunger];
   if(hv>=.8) out.push({meal:'proper full-meal portion',between:'just-right portion',snack:'snacky size'}[q.hunger]);
   if(q.budget>=20&&d.f.includes('treat')) out.push('treat-yourself energy');
@@ -109,6 +157,6 @@ function reasons(d,q,ctx){
   return out.slice(0,3);
 }
 
-const BRAIN={P,SPEND,priceAt,spotsFor,areaHasSpots,inPool,baseScore,score,rank,verdict,reasons};
+const BRAIN={P,SPEND,priceAt,spotsFor,areaHasSpots,inPool,baseScore,score,rank,vibeList,verdict,reasons};
 if(typeof module!=='undefined') module.exports=BRAIN; else root.GFBRAIN=BRAIN;
 })(this);
