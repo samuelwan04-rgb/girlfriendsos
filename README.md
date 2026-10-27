@@ -1,6 +1,6 @@
 # GIRLFRIENDSOS
 
-Momo helps Rinis decide what to eat. She answers six questions (Asian or ang moh, cuisine, hunger, budget, a vibe check, where she is) and Momo picks 2–3 dishes with a percentage for each, plus which of her spots sells them. Each verdict is emailed to Sam.
+Momo helps Rinis decide what to eat. She answers six questions (Asian or ang moh, cuisine, hunger, budget, a vibe check, where she is) and Momo picks 2–3 dishes with a percentage for each, plus which of her spots sells them. She taps the one she wants, and Momo emails Sam that pick (one email per meal).
 
 ## Files
 

@@ -109,7 +109,15 @@ h2{font-family:var(--display);font-weight:600;font-size:24px;line-height:1.2;mar
 .stick{position:sticky;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:2;box-shadow:0 6px 18px -6px rgba(201,88,122,.55)}
 .picks{display:flex;flex-direction:column;gap:12px}
 .pick{border:2px solid var(--line);border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--cream)}
-.pick.top{border-color:var(--pink);background:var(--paper);box-shadow:0 6px 0 -2px var(--blush)}
+.pick{cursor:pointer;-webkit-tap-highlight-color:transparent;transition:border-color .12s,background .12s,transform .12s}
+.pick:active{transform:scale(.99)}
+.pick:focus-visible{outline:3px solid var(--rose);outline-offset:2px}
+.pick.chosen{border-color:var(--rose);background:var(--paper);box-shadow:0 6px 0 -2px var(--blush)}
+.tick{flex:0 0 22px;height:22px;border-radius:50%;border:2px solid var(--pink);align-self:center;display:grid;place-items:center}
+.pick.chosen .tick{background:var(--rose);border-color:var(--rose)}
+.pick.chosen .tick::after{content:"";width:6px;height:11px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:translateY(-1px) rotate(45deg)}
+.btn.done{background:var(--ink);border-color:var(--ink)}
+.stickrow{position:sticky;bottom:calc(env(safe-area-inset-bottom,0px) + 10px);z-index:2;background:var(--paper);border-radius:999px;padding:6px;margin:-6px;box-shadow:0 6px 18px -8px rgba(201,88,122,.5)}
 .pick .head{display:flex;align-items:baseline;gap:10px}
 .pick .name{font-family:var(--display);font-weight:600;font-size:20px;line-height:1.2;min-width:0}
 .pick .pct{margin-left:auto;font-family:var(--display);font-weight:700;font-size:26px;color:var(--rose);font-variant-numeric:tabular-nums}
@@ -179,7 +187,7 @@ function saveHistory(h){try{localStorage.setItem(HKEY,JSON.stringify(h.slice(-80
 const ctx=()=>({hour:new Date().getHours(),now:Date.now(),history:loadHistory()});
 
 /* ---------- State ---------- */
-const S={step:0,loc:null,side:null,cu:null,hunger:null,budget:null,mood:{},nah:new Set(),trail:[],eating:null};
+const S={step:0,loc:null,side:null,cu:null,hunger:null,budget:null,mood:{},nah:new Set(),trail:[],eating:null,vibe:null,vibeSeen:new Set(),v:null,choice:0};
 const card=document.getElementById('card');
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const money=v=>Number.isInteger(v)?`$${v}`:`$${v.toFixed(2)}`;
@@ -220,7 +228,7 @@ function render(){
     card.innerHTML=backBtn()+momo('ask','asian or ang moh today?')+
       optButtons([...SIDES,{id:'any',label:'No idea',note:'Momo picks from everything'}],'side');
     card.querySelectorAll('[data-side]').forEach(b=>b.onclick=()=>{
-      S.side=b.dataset.side;S.cu=null;S.mood={};
+      S.side=b.dataset.side;S.cu=null;S.mood={};S.vibe=null;
       if(S.side==='snack'){S.hunger='snack';go(4)} else go(S.side==='any'?3:2);
     });
   }
@@ -228,31 +236,38 @@ function render(){
     const list=CUISINES[S.side];
     card.innerHTML=backBtn()+momo('ask',S.side==='asian'?'ok which kind of asian?':'which kind of ang moh?')+
       optButtons([...list,{id:'any',label:'Any of these',note:'surprise me',wide:list.length%2===0}],'cu');
-    card.querySelectorAll('[data-cu]').forEach(b=>b.onclick=()=>{S.cu=b.dataset.cu;S.mood={};go(3)});
+    card.querySelectorAll('[data-cu]').forEach(b=>b.onclick=()=>{S.cu=b.dataset.cu;S.mood={};S.vibe=null;go(3)});
   }
   else if(st===3){
     card.innerHTML=backBtn()+momo('ask','how hungry are you?')+optButtons(HUNGER,'h');
-    card.querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>{S.hunger=b.dataset.h;go(4)});
+    card.querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>{S.hunger=b.dataset.h;S.vibe=null;go(4)});
   }
   else if(st===4){
     card.innerHTML=backBtn()+momo('ask',"what's the budget?",'per person')+optButtons(BUDGET,'b');
-    card.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{S.budget=+b.dataset.b;go(5)});
+    card.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{S.budget=+b.dataset.b;S.mood={};S.vibe=null;go(5)});
   }
   else if(st===5){
     // Location isn't known yet, so this list uses general prices and favours dishes from any of her spots
     S.loc=null;
-    const broad=S.side==='any'||S.cu==='any'||S.side==='snack';
-    const list=B.vibeList(q(),ctx(),broad?B.P.vibeListBroad:B.P.vibeList);
+    const k=S.side==='any'||S.cu==='any'||S.side==='snack'?B.P.vibeListBroad:B.P.vibeList;
+    if(!S.vibe){S.vibe=B.vibeList(q(),ctx(),k).map(r=>r.d.id);S.vibe.forEach(id=>S.vibeSeen.add(id))}
+    const left=moreVibes(1).length>0;
     card.innerHTML=backBtn()+momo('think','any of these sound good?',"Tap the ones you could eat. Hit nah on anything you don't want. Or just skip.")+
-      `<div class="dishes">`+list.map(({d})=>{
-        const m=S.mood[d.id]||'';
+      `<div class="dishes">`+S.vibe.map(id=>{
+        const d=byId[id], m=S.mood[d.id]||'';
         return `<div class="dishrow"><button class="dish ${m}" data-love="${d.id}" aria-pressed="${m==='love'}">
           <svg class="heart" viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-7.5-10.1C4.5 7.4 6.6 5.5 9 5.5c1.4 0 2.4.7 3 1.6.6-.9 1.6-1.6 3-1.6 2.4 0 4.5 1.9 4.5 4.9 0 5.5-7.5 10.1-7.5 10.1z"/></svg>
           <span class="t"><b>${esc(d.name)}</b><span>${esc(d.x)}</span></span><span class="price">${priceText(d)}</span></button>
           <button class="nah ${m==='nope'?'on':''}" data-nope="${d.id}" aria-pressed="${m==='nope'}">nah</button></div>`}).join('')+`</div>`+
+      (left?`<button class="btn ghost small" id="more">None of these, show me others</button>`:`<p class="note">That's everything Momo has for this. Hit Next and Momo will pick from what's left.</p>`)+
       `<button class="btn stick" id="next">Next</button>`;
     card.querySelectorAll('[data-love]').forEach(b=>b.onclick=()=>{const id=b.dataset.love;S.mood[id]=S.mood[id]==='love'?undefined:'love';render()});
-    card.querySelectorAll('[data-nope]').forEach(b=>b.onclick=()=>{const id=b.dataset.nope;S.mood[id]=S.mood[id]==='nope'?undefined:'nope';render()});
+    card.querySelectorAll('[data-nope]').forEach(b=>b.onclick=()=>{
+      const id=b.dataset.nope;S.mood[id]=S.mood[id]==='nope'?undefined:'nope';
+      if(S.vibe.every(x=>S.mood[x]==='nope')&&moreVibes(1).length){refillVibes();toTop()}   // said nah to the lot: show new ones
+      render();
+    });
+    const more=card.querySelector('#more'); if(more) more.onclick=()=>{refillVibes();render();toTop()};
     card.querySelector('#next').onclick=()=>go(6);
   }
   else if(st===6){
@@ -271,90 +286,103 @@ function whereHtml(d){
   return `<div class="where"><b>${lead}</b> ${esc(d.w)} <span class="note">· ${priceText(d)}</span></div>`;
 }
 
+/* ---------- Vibe check: more dishes ----------
+   Keeps the ones she tapped, swaps everything else for the next-best dishes she hasn't seen yet. */
+function moreVibes(n){
+  return B.rank(q(),ctx(),false).filter(r=>!S.vibeSeen.has(r.d.id)&&S.mood[r.d.id]!=='nope').slice(0,n).map(r=>r.d.id);
+}
+function refillVibes(){
+  const k=S.side==='any'||S.cu==='any'||S.side==='snack'?B.P.vibeListBroad:B.P.vibeList;
+  S.vibe.forEach(id=>{if(S.mood[id]!=='love') S.mood[id]=S.mood[id]||'nope'});   // not tapped = not this time
+  const loved=S.vibe.filter(id=>S.mood[id]==='love'), fresh=moreVibes(k-loved.length);
+  fresh.forEach(id=>S.vibeSeen.add(id));
+  S.vibe=[...loved,...fresh];
+}
+
 /* ---------- The email to Sam ---------- */
 const GENERIC_PLACE=/stall|shop|^bakery$|\(behind\)/i;   // not searchable on Grab by name
-function emailFor(v){
-  const top=v[0].d, area=AREAS.find(a=>a.id===S.loc).label;
+function emailFor(v,choice){
+  const top=v[choice].d, area=AREAS.find(a=>a.id===S.loc).label;
   const hunger=(HUNGER.find(x=>x.id===S.hunger)||{label:'Snack'}).label, budget=BUDGET.find(x=>x.id===S.budget).label;
   const when=new Date().toLocaleString('en-SG',{weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
-  const subject=S.eating?`GIRLFRIENDSOS: Rinis is eating ${S.eating.toLowerCase()}`:`GIRLFRIENDSOS: Rinis wants ${top.name.toLowerCase()}`;
+  const subject=`GIRLFRIENDSOS: Rinis is eating ${top.name.toLowerCase()}`;
   const picks=v.map((r,i)=>{
     const sp=B.spotsFor(r.d.id,S.loc);
     const at=sp.length?sp.map(o=>`${o.place} (${o.lo===o.hi?money(o.lo):money(o.lo)+'–'+money(o.hi)}${o.note?', '+o.note:''})`).join('; '):r.d.w;
-    return `${i+1}. ${r.d.name}: ${r.pct}%\n   ${at}`;
+    return `${i===choice?'→':' '} ${i+1}. ${r.d.name}: ${r.pct}%\n     ${at}`;
   }).join('\n');
-  const search=[...new Set(v.map(r=>{const sp=B.spotsFor(r.d.id,S.loc).find(o=>!GENERIC_PLACE.test(o.place));return sp?`${sp.place.replace(' @ ',' ')} ${r.d.name.split(' / ')[0].toLowerCase()}`:r.d.name.split(' / ')[0].toLowerCase()}))];
+  const search=[...new Set([v[choice],...v].map(r=>{const sp=B.spotsFor(r.d.id,S.loc).find(o=>!GENERIC_PLACE.test(o.place));return sp?`${sp.place.replace(' @ ',' ')} ${r.d.name.split(' / ')[0].toLowerCase()}`:r.d.name.split(' / ')[0].toLowerCase()}))];
   const body=`Momo's verdict for Rinis · ${when}
 Where: ${area} · Hungry: ${hunger} · Budget: ${budget}
-${S.eating?`She picked: ${S.eating}\n`:''}
+She picked: ${top.name}
+
+Momo's picks:
 ${picks}
 
-Search GrabFood for: ${search.join(' / ')}
+Search GrabFood for: ${search[0]}${search.length>1?`\n(the others were: ${search.slice(1).join(' / ')})`:''}
 https://food.grab.com/sg/en/`;
   return {subject,body};
 }
 
-/* ---------- Auto-email Sam ----------
-   Posts to formsubmit.co, which forwards to Sam's inbox. Works on the GitHub Pages version;
-   the claude.ai artifact viewer blocks outside requests, so there it quietly does nothing. */
+/* ---------- Email Sam ----------
+   Posts to formsubmit.co, which forwards to Sam's inbox. Only sent when she taps "I'm eating", so one email per meal.
+   Works on the GitHub Pages version; the claude.ai artifact viewer blocks outside requests, so there it quietly does nothing. */
 const MAIL_URL=`https://formsubmit.co/ajax/${SAM_EMAIL}`;
-let pendingSend=null, pendingMail=null, lastSent='';
+let lastSent='', sentNote='';
+const note=t=>{sentNote=t;const el=document.getElementById('sent');if(el) el.textContent=t};
 function mailFields({subject,body}){return {_subject:subject,_template:'box',_captcha:'false',message:body}}
-function sendToSam(v,now){
-  clearTimeout(pendingSend);
-  pendingMail=emailFor(v);
-  const go=()=>{
-    const mail=pendingMail; pendingMail=null;
-    if(!mail||mail.body===lastSent) return;
-    lastSent=mail.body;
-    fetch(MAIL_URL,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(mailFields(mail))})
-      .then(r=>r.ok?r.json():Promise.reject())
-      .then(j=>{const el=document.getElementById('sent'); if(el&&String(j.success)==='true') el.textContent='Momo told Sam.'})
-      .catch(()=>{});
-  };
-  if(now) go(); else pendingSend=setTimeout(go,10000);   // wait a bit in case she hits "Nah, next"
+function sendToSam(mail){
+  if(mail.subject===lastSent) return;   // double tap, or the same pick again
+  lastSent=mail.subject;
+  note('Telling Sam…');
+  fetch(MAIL_URL,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(mailFields(mail))})
+    .then(r=>r.ok?r.json():Promise.reject())
+    .then(j=>{if(String(j.success)!=='true') throw 0; note('Momo told Sam.')})
+    .catch(()=>{lastSent=''; note("Couldn't reach Sam. Tap again to retry.")});
 }
-// If she closes the page before the wait is up, send what's on screen
-addEventListener('pagehide',()=>{
-  if(!pendingMail||pendingMail.body===lastSent) return;
-  const f=new FormData(); for(const [k,val] of Object.entries(mailFields(pendingMail))) f.append(k,val);
-  try{navigator.sendBeacon(MAIL_URL,f)}catch(e){}
-});
 
-function renderResult(){
-  const c=ctx(), v=B.verdict(q(),c);
+function renderResult(fresh=true){
+  const c=ctx();
+  if(fresh||!S.v){S.v=B.verdict(q(),c);S.choice=0;S.eating=null;sentNote=''}
+  const v=S.v;
   if(!v.length){
     card.innerHTML=backBtn()+momo('think','momo is out of ideas','You said nah to everything. Try a different cuisine?')+`<button class="btn" id="again">Start over</button>`;
     card.querySelector('#again').onclick=reset;
     card.querySelector('#back').onclick=()=>{S.step=S.trail.pop();render();toTop()};
     return;
   }
-  const top=v[0].d;
-  const topPrice=B.priceAt(top,S.loc).lo;
-  const drinks=ADDONS.filter(a=>a.area===S.loc&&(S.budget>=20||topPrice+a.price<=S.budget+.5));
-  card.innerHTML=backBtn()+momo('done',`momo says… ${esc(top.name.toLowerCase())}!`,`${v[0].pct}% sure. Here's the breakdown:`)+
-    `<div class="picks">`+v.map((r,i)=>`<div class="pick ${i===0?'top':''}">
-      <div class="head"><span class="name">${esc(r.d.name)}</span><span class="pct">${r.pct}%</span></div>
-      <div class="bar"><i style="width:0" data-w="${r.pct}"></i></div>
+  const top=v[0].d, pick=v[S.choice].d, short=d=>esc(d.name.split(' / ')[0].toLowerCase());
+  const pickPrice=B.priceAt(pick,S.loc).lo;
+  const drinks=ADDONS.filter(a=>a.area===S.loc&&(S.budget>=20||pickPrice+a.price<=S.budget+.5));
+  card.innerHTML=backBtn()+momo('done',`momo says… ${esc(top.name.toLowerCase())}!`,`${v[0].pct}% sure. Tap the one you want:`)+
+    `<div class="picks" role="radiogroup" aria-label="Momo's picks">`+v.map((r,i)=>`<div class="pick ${i===S.choice?'chosen':''}" role="radio" tabindex="0" aria-checked="${i===S.choice}" data-pick="${i}">
+      <div class="head"><span class="tick" aria-hidden="true"></span><span class="name">${esc(r.d.name)}</span><span class="pct">${r.pct}%</span></div>
+      <div class="bar"><i style="width:${fresh?0:r.pct+'%'}" data-w="${r.pct}"></i></div>
       <div class="why">${B.reasons(r.d,q(),c).map(x=>`<span>${esc(x)}</span>`).join('')}</div>
       ${whereHtml(r.d)}
     </div>`).join('')+`</div>`+
     (drinks.length?`<div class="addon">Thirsty? ${drinks.map(a=>`${esc(a.name)} ${money(a.price)}`).join(' or ')}</div>`:'')+
-    `<div class="row"><button class="btn grow" id="eat">I'm eating ${esc(top.name.split(' / ')[0].toLowerCase())}</button><button class="btn ghost" id="reroll">Nah, next</button></div>`+
-    `<div class="row"><button class="btn ghost small" id="again">Start over</button><span class="sendto" id="sent"></span></div>`+
+    `<div class="row stickrow"><button class="btn grow ${S.eating===pick.name?'done':''}" id="eat">${S.eating===pick.name?`Eating ${short(pick)}!`:`I'm eating ${short(pick)}`}</button><button class="btn ghost" id="reroll">None of these</button></div>`+
+    `<div class="row"><button class="btn ghost small" id="again">Start over</button><span class="sendto" id="sent" aria-live="polite">${esc(sentNote)}</span></div>`+
     `<div class="toast" id="toast"></div>`;
-  requestAnimationFrame(()=>requestAnimationFrame(()=>card.querySelectorAll('.bar i').forEach(i=>i.style.width=i.dataset.w+'%')));
+  if(fresh) requestAnimationFrame(()=>requestAnimationFrame(()=>card.querySelectorAll('.bar i').forEach(i=>i.style.width=i.dataset.w+'%')));
   card.querySelector('#back').onclick=()=>{S.step=S.trail.pop();render();toTop()};
-  card.querySelector('#reroll').onclick=()=>{S.nah.add(top.id);S.eating=null;renderResult();toTop()};
-  sendToSam(v,false);
+  const choose=i=>{S.choice=i;renderResult(false)};
+  card.querySelectorAll('[data-pick]').forEach(el=>{
+    el.onclick=()=>choose(+el.dataset.pick);
+    el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();choose(+el.dataset.pick)}};
+  });
+  card.querySelector('#reroll').onclick=()=>{v.forEach(r=>S.nah.add(r.d.id));renderResult();toTop()};
   card.querySelector('#again').onclick=reset;
   card.querySelector('#eat').onclick=()=>{
-    const h=loadHistory();h.push({id:top.id,t:Date.now()});saveHistory(h);S.eating=top.name;
-    card.querySelector('#toast').textContent=`Saved. Momo will remember you like ${top.name.toLowerCase()}. Enjoy!`;
-    sendToSam(v,true);
+    if(S.eating!==pick.name){const h=loadHistory();h.push({id:pick.id,t:Date.now()});saveHistory(h)}
+    S.eating=pick.name;
+    renderResult(false);
+    card.querySelector('#toast').textContent=`Saved. Momo will remember you like ${pick.name.toLowerCase()}. Enjoy!`;
+    sendToSam(emailFor(v,S.choice));
   };
 }
-function reset(){Object.assign(S,{step:0,loc:null,side:null,cu:null,hunger:null,budget:null,mood:{},nah:new Set(),trail:[],eating:null});render();toTop()}
+function reset(){Object.assign(S,{step:0,loc:null,side:null,cu:null,hunger:null,budget:null,mood:{},nah:new Set(),trail:[],eating:null,vibe:null,vibeSeen:new Set(),v:null,choice:0});render();toTop()}
 render();
 // Warm up the other Momo pictures so they're there when she taps (no blank circle on slow mobile data)
 addEventListener('load',()=>Object.values(PIC).forEach(src=>{const i=new Image();i.src=src}));
