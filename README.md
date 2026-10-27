@@ -21,7 +21,11 @@ O('school','Dumpling stall','dumplings',7.1);
 O('home','Mala stall','mala',10,12,{note:'1 person portion'});
 ```
 
-Area is `school`, `west`, `home`, `east`, `central` or `north`. The third value is a dish id from the dish bank above it. If the food isn't in the bank yet, add a `D(...)` line first.
+Area is `school`, `west`, `home`, `sengkang`, `east`, `central` or `north`. The third value is a dish id from the dish bank above it. If the food isn't in the bank yet, add a `D(...)` line first.
+
+## What Momo knows about Rinis
+
+Dishes carry flags in `data.js`: `spicy`, `heavy` and `junk` (unhealthy). `brain.js` uses them the way Sam described her: heavy meals are marked down, junk is fine but drops for a few days after she's had some, and spicy is a mood the vibe check picks up. Change a dish's flags to change how it's treated; the strengths are in `P`.
 
 ## Auto-email setup (once)
 
