@@ -254,7 +254,7 @@ function emailFor(v){
     const at=sp.length?sp.map(o=>`${o.place} (${o.lo===o.hi?money(o.lo):money(o.lo)+'–'+money(o.hi)}${o.note?', '+o.note:''})`).join('; '):r.d.w;
     return `${i+1}. ${r.d.name}: ${r.pct}%\n   ${at}`;
   }).join('\n');
-  const search=[...new Set(v.map(r=>{const sp=B.spotsFor(r.d.id,S.loc).find(o=>!GENERIC_PLACE.test(o.place));return sp?`${sp.place} ${r.d.name.split(' / ')[0].toLowerCase()}`:r.d.name.split(' / ')[0].toLowerCase()}))];
+  const search=[...new Set(v.map(r=>{const sp=B.spotsFor(r.d.id,S.loc).find(o=>!GENERIC_PLACE.test(o.place));return sp?`${sp.place.replace(' @ ',' ')} ${r.d.name.split(' / ')[0].toLowerCase()}`:r.d.name.split(' / ')[0].toLowerCase()}))];
   const body=`Momo's verdict for Rinis · ${when}
 Where: ${area} · Hungry: ${hunger} · Budget: ${budget}
 ${S.eating?`She picked: ${S.eating}\n`:''}

@@ -3,9 +3,10 @@
 
 /* ---------- Questions ---------- */
 const AREAS = [
-  {id:'school', label:'School'},
+  {id:'school', label:'School', note:'SIM'},
   {id:'west', label:'West', note:'tuition, Bukit Panjang'},
   {id:'home', label:'Home / near home'},
+  {id:'sengkang', label:'Sengkang', note:'Compass One, Kopitiam Square'},
   {id:'east', label:'East'},
   {id:'central', label:'Central'},
   {id:'north', label:'North'}
@@ -170,7 +171,7 @@ D('bowl','Grilled meat bowl','st',10,18,.9,.8,.2,{p:.65,tr:.9,x:'steak or chicke
 const SPOTS = [];
 function O(area,place,dish,lo,hi,o={}){if(typeof hi==='object'){o=hi;hi=undefined}SPOTS.push({area,place,dish,lo,hi:hi??lo,note:o.note||'',w:o.w??1,extra:!!o.extra})}
 
-// School
+// School (SIM)
 O('school','Dumpling stall','dumplings',7.1);
 O('school','Taiwanese stall','twchicken',4,5);
 O('school','Taiwanese stall','sotong',3);
@@ -220,6 +221,37 @@ O('west','Pastago @ Hillion','aglio',5.7,12,{extra:true,note:'fresh pasta'});
 // East
 O('east','The Brewing Ground','grilledcheese',17);
 O('east','Neptune','icecreamwaffle',17,{note:'caramelised bacon ice cream waffle'});
+
+// Sengkang: Momo's finds at Compass One and Kopitiam Square (from 2025-26 food guides; check they're still there)
+// Compass One
+O('sengkang','Four Leaves @ Compass One','buttertteok',1,5,{extra:true});
+O('sengkang','Chateraise @ Compass One','mochi',2,4,{extra:true});
+O('sengkang','Ya Kun @ Compass One','kaya',2,6.3,{extra:true});
+O('sengkang','Tip Top Curry Puff @ Compass One','currypuff',2,2.5,{extra:true});
+O('sengkang','Polar Puffs @ Compass One','currypuff',2,3,{extra:true});
+O('sengkang','BreadTalk @ Compass One','bread',2,4,{extra:true});
+O('sengkang',"McDonald's @ Compass One",'applepie',2,{extra:true});
+O('sengkang',"McDonald's @ Compass One",'fastfood',6,10,{extra:true});
+O('sengkang','Shihlin @ Compass One','twchicken',6,7,{extra:true,w:.6,note:'older listing, check it\'s open'});
+O('sengkang','Shihlin @ Compass One','sotong',6,7,{extra:true,w:.6,note:'older listing, check it\'s open'});
+O('sengkang','Eat 3 Bowls @ Compass One','lurou',6,9,{extra:true,note:'braised pork rice, price est.'});
+O('sengkang','Din Tai Fung @ Compass One','xlb',9,15,{extra:true});
+O('sengkang','Din Tai Fung @ Compass One','dumplings',9,14,{extra:true,note:'price est.'});
+O('sengkang','Pontian Wanton Noodles @ Compass One','wantonmee',5,7,{extra:true,note:'price est.'});
+O('sengkang','Crave Nasi Lemak @ Compass One','nasilemak',6,9,{extra:true});
+O('sengkang','Umisushi / Ichiban Sushi @ Compass One','sushi',4,15,{extra:true});
+O('sengkang','Yoshinoya @ Compass One','donburi',7,11,{extra:true});
+O('sengkang','Ajisen Ramen @ Compass One','ramen',12,18,{extra:true,note:'price est.'});
+O('sengkang','Bonchon @ Compass One','krchicken',12,20,{extra:true,note:'price est.'});
+O('sengkang','Seorae @ Compass One','kbbq',25,40,{extra:true,note:'price est.'});
+// Kopitiam Square (10 Sengkang Square)
+O('sengkang','Munchi Pancakes @ Kopitiam Sq','mjk',2.2,3.2,{extra:true});
+O('sengkang','JIN Kimchi Express @ Kopitiam Sq','jjigae',6,{extra:true,note:'kimchi stew set'});
+O('sengkang','Fitra Chicken Rice @ Kopitiam Sq','chickenrice',4,6,{extra:true,note:'price est.'});
+O('sengkang','Confirm+Chop Western @ Kopitiam Sq','chickenchop',7,10,{extra:true,note:'price est.'});
+O('sengkang','Kebab Marhaba @ Kopitiam Sq','shawarma',7,10,{extra:true,note:'price est.'});
+O('sengkang','Seng Kee Bak Kut Teh @ Kopitiam Sq','bkt',6,9,{extra:true,note:'price est.'});
+O('sengkang','Pasta Times @ Kopitiam Sq','aglio',6,9,{extra:true,note:'price est.'});
 
 /* Drinks Momo can suggest on the side */
 const ADDONS = [

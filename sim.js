@@ -11,8 +11,8 @@ const pick=(items,w)=>{const tot=w.reduce((a,b)=>a+b,0);let r=rnd()*tot;for(let 
 const gauss=()=>Math.sqrt(-2*Math.log(rnd()+1e-12))*Math.cos(2*Math.PI*rnd());
 
 const ASIAN=CUISINES.asian.map(c=>c.id), ANGMOH=CUISINES.angmoh.map(c=>c.id);
-const AREA_W={school:.35,west:.25,home:.25,east:.1,central:.05};
-const BUDGET_W={school:[.5,.35,.1,.05],west:[.55,.3,.1,.05],home:[.4,.4,.15,.05],east:[.1,.2,.3,.4],central:[.2,.3,.3,.2]};
+const AREA_W={school:.33,west:.22,home:.22,sengkang:.12,east:.07,central:.04};
+const BUDGET_W={sengkang:[.35,.35,.2,.1],school:[.5,.35,.1,.05],west:[.55,.3,.1,.05],home:[.4,.4,.15,.05],east:[.1,.2,.3,.4],central:[.2,.3,.3,.2]};
 const TIERS=[7,10,15,20];
 
 function persona(){const t={};for(const d of DISHES)t[d.id]=Math.exp(.5*gauss());return t}
